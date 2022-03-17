@@ -278,7 +278,20 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     # TODO: Implement the forward pass for a single timestep of an LSTM.        #
     # You may want to use the numerically stable sigmoid implementation above.  #
     #############################################################################
-    pass
+    
+    Wxx = np.dot(x, Wx)
+    Whh = np.dot(prev_h, Wh)
+    
+    a = Wxx + Whh + b
+    
+    a_i, a_f, a_o, a_g = np.split(a, 4, axis=1)
+    i, f, o, g = sigmoid(a_i), sigmoid(a_f), sigmoid(a_o), np.tanh(a_g)
+    
+    next_c = (f * prev_c) + (i * g)
+    next_h = o * np.tanh(next_c)
+    
+    cache = (i, f, o, g, prev_c, next_c, Wx, Wh, x, prev_h)
+    
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -310,7 +323,25 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
     # the output value from the nonlinearity.                                   #
     #############################################################################
-    pass
+    
+    i, f, o, g, prev_c, next_c, Wx, Wh, x, prev_h = cache
+    
+    dc = dnext_h * o * (1 - np.tanh(next_c)**2) 
+    
+    dprev_c = (dnext_c + dc) * f
+    
+    da_i = ((dnext_c + dc) * g) * i * (1 - i)
+    da_f = ((dnext_c + dc) * prev_c) * f * (1 - f)
+    da_o = (dnext_h * np.tanh(next_c)) * o * (1 - o)
+    da_g = ((dnext_c + dc) * i) * (1 - g**2)
+    da = np.hstack((da_i, da_f, da_o, da_g))
+
+    dWx = np.dot(x.T, da)
+    dWh = np.dot(prev_h.T, da)
+    dx = np.dot(da, Wx.T)
+    dprev_h = np.dot(da, Wh.T)
+    db = np.sum(da, axis=0)
+    
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -345,7 +376,23 @@ def lstm_forward(x, h0, Wx, Wh, b):
     # TODO: Implement the forward pass for an LSTM over an entire timeseries.   #
     # You should use the lstm_step_forward function that you just defined.      #
     #############################################################################
-    pass
+    N,T,D = x.shape
+    _, H = h0.shape
+    
+    h = np.zeros((N,T,H))
+    
+    cache = []
+    
+    i_h = h0
+    i_c = np.zeros((N, H))
+    
+    for i in range(T):
+        i_h, i_c, i_cache = lstm_step_forward(x[:,i,:], i_h, i_c, Wx, Wh, b)
+        
+        h[:,i,:] = i_h
+        
+        cache.append(i_cache)
+    
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -373,7 +420,29 @@ def lstm_backward(dh, cache):
     # TODO: Implement the backward pass for an LSTM over an entire timeseries.  #
     # You should use the lstm_step_backward function that you just defined.     #
     #############################################################################
-    pass
+    
+    N,T,H = dh.shape
+    
+    D = cache[0][6].shape[0]
+    
+    dx = np.zeros((N, T, D))
+    dh0 = np.zeros((N, H))
+    dWx = np.zeros((D, 4*H))
+    dWh = np.zeros((H, 4*H))
+    db = np.zeros((4*H))
+    
+    d_ih = np.zeros((N,H))
+    d_ic = np.zeros((N, H))
+    
+    for i in range(T - 1, -1, -1):
+        dx[:, i, :], d_ih, d_ic, i_dWx, i_dWh, i_db = lstm_step_backward(dh[:, i, :] + d_ih, d_ic, cache[i])
+        
+        dWx += i_dWx
+        dWh += i_dWh
+        db += i_db
+        
+    dh0 = d_ih
+    
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
