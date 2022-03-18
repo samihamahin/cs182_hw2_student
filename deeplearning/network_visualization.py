@@ -31,7 +31,23 @@ def compute_saliency_maps(X, y, model):
     # to each input image. You first want to compute the loss over the correct   #
     # scores, and then compute the gradients with torch.autograd.gard.           #
     ##############################################################################
-    pass
+    N = y.shape
+    
+    #foward pass through model
+    model = model(X)
+    
+    #corected class score 
+    model = model.gather(1, y.view(-1, 1)).squeeze()
+    
+    #backward pass through model
+    score_tensor = torch.FloatTensor([1.0,1.0,1.0,1.0,1.0])
+    model.backward(score_tensor)
+    
+    #compute gradient 
+    grad = X.grad.data.abs()
+    saliency, _ = torch.max(grad, dim=1)
+    saliency = saliency.squeeze()
+    
     ##############################################################################
     #                             END OF YOUR CODE                               #
     ##############################################################################
@@ -69,7 +85,38 @@ def make_fooling_image(X, target_y, model):
     # in fewer than 100 iterations of gradient ascent.                           #
     # You can print your progress over iterations to check your algorithm.       #
     ##############################################################################
-    pass
+    
+    #perform gradient ascent on score of target class
+    
+    #normalize the gradient
+        
+    #iterations of at most 100 iterations for gradient ascent
+    for i in range(100):
+        #run the model to see the scores
+        scores = model(X_fooling)
+        _, score_ind = scores.data.max(dim=1)
+        
+        #keep running if model is not fooled
+        if score_ind != target_y:
+            scores[:,target_y].backward()
+            
+            #gradient
+            grad = X_fooling.grad.data
+            
+            #normalized gradient
+            n_grad = torch.norm(grad, 2)
+            
+            #update image with normalized gradient
+            X_fooling.data += learning_rate * grad / n_grad
+            
+            #zero out gradient 
+            X_fooling.grad.data.zero_()
+        
+        #stop running the model if fooled
+        else:
+            break
+    
+    
     ##############################################################################
     #                             END OF YOUR CODE                               #
     ##############################################################################
@@ -98,7 +145,22 @@ def update_class_visulization(model, target_y, l2_reg, learning_rate, img):
     # L2 regularization term!                                              #
     # Be very careful about the signs of elements in your code.            #
     ########################################################################
-    pass
+    
+    model.eval()
+    scores = model(img)
+    
+    scores_y = scores[:, target_y]
+    
+    loss_scores = scores_y - l2_reg * torch.sum(img**2)
+    
+    loss_scores.backward()
+    
+    
+    with torch.no_grad():
+        
+        img += learning_rate * img.grad
+    
+    
     ########################################################################
     #                             END OF YOUR CODE                         #
     ########################################################################
